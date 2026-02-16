@@ -37,7 +37,11 @@ const getComponentIntelligence = (label: string) => {
     specs: `High-performance tungsten-carbide gate valve. API 6A rated for 15k psi service. Hydraulic actuator with fail-safe close (FSC) functionality. Hardened cobalt-alloy seating with bi-directional sealing capability.`,
     recs: "Perform immediate partial stroke test (PST) to verify actuator response. Inspect hydraulic supply lines for pressure fluctuations. Schedule ultrasonic seal leak verification within 72 hours.",
     model: `Brahan-V-${l.split(' ').map(w => w[0].toUpperCase()).join('')}-Elite`,
-    failureModes: ["Stem packing leak", "Gate scoring", "Actuator diaphragm rupture"],
+    failureModes: [
+      { name: "Stem packing leak", probability: "12.5%", level: "medium" },
+      { name: "Gate scoring", probability: "8.1%", level: "medium" },
+      { name: "Actuator diaphragm rupture", probability: "3.2%", level: "low" },
+    ],
     reliabilityScore: 94.2
   };
   
@@ -45,28 +49,44 @@ const getComponentIntelligence = (label: string) => {
     specs: "High-precision piezo-resistive transducer, API 6A compliant. Range: 0-15,000 psi. Dual-redundant sensing elements with 2oo3 voting logic.",
     recs: "Execute manual bleed-off test to verify zero-point stability. Inspect housing for signs of seawater ingress.",
     model: "Brahan-PTX-9000-S",
-    failureModes: ["Electronic drift", "Seawater ingress", "Diaphragm fatigue"],
+    failureModes: [
+      { name: "Electronic drift", probability: "15.0%", level: "medium" },
+      { name: "Seawater ingress", probability: "5.0%", level: "low" },
+      { name: "Diaphragm fatigue", probability: "2.0%", level: "low" },
+    ],
     reliabilityScore: 98.5
   };
   if (l.includes('flow')) return {
     specs: "Ultrasonic multiphase meter with integrated Gamma-ray densitometer. Brahan-proprietary signal processing for high-viscosity fluid correction.",
     recs: "Analyze acoustic signal attenuation to detect paraffin wax accumulation. Verify flowmeter calibration against Hub ledger.",
     model: "Brahan-FM-Coresync",
-    failureModes: ["Transducer fouling", "Signal attenuation", "Multiphase interference"],
+    failureModes: [
+      { name: "Transducer fouling", probability: "18.3%", level: "high" },
+      { name: "Signal attenuation", probability: "10.0%", level: "medium" },
+      { name: "Multiphase interference", probability: "6.0%", level: "low" },
+    ],
     reliabilityScore: 89.7
   };
   if (l.includes('temp')) return {
     specs: "Quad-junction RTD assembly (Platinum PT100). Titanium Grade 2 thermowell for maximum thermal sensitivity.",
     recs: "Perform loop check for electromagnetic interference. Compare T-readout against redundant B-barrier sensors.",
     model: "Brahan-TT-DeltaV",
-    failureModes: ["RTD element failure", "Thermowell erosion", "Terminal corrosion"],
+    failureModes: [
+      { name: "RTD element failure", probability: "7.0%", level: "low" },
+      { name: "Thermowell erosion", probability: "1.0%", level: "low" },
+      { name: "Terminal corrosion", probability: "9.0%", level: "medium" },
+    ],
     reliabilityScore: 99.1
   };
   return {
     specs: "Standard industrial integrity barrier component. Reinforced structural housing with Brahan Integrity Shield™ coating.",
     recs: "Conduct visual ROV inspection for structural scoring. Verify bolt tension on primary flange interface.",
     model: "Brahan-GEN-Barrier",
-    failureModes: ["Structural fatigue", "Corrosion pitting", "Mechanical wear"],
+    failureModes: [
+      { name: "Structural fatigue", probability: "5.0%", level: "low" },
+      { name: "Corrosion pitting", probability: "10.0%", level: "medium" },
+      { name: "Mechanical wear", probability: "8.0%", level: "medium" },
+    ],
     reliabilityScore: 96.0
   };
 };
@@ -332,6 +352,8 @@ const ChristmasTreeUnit: React.FC<ChristmasTreeUnitProps> = ({ data, hubConfig }
     return ((100 - featuredValve.percentage) / 100) * 90;
   }, [featuredValve.percentage]);
 
+  const isFeaturedValveFailed = failedComponents.has(featuredValve.label.toLowerCase());
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 mb-20 relative">
       <div>
@@ -371,10 +393,43 @@ const ChristmasTreeUnit: React.FC<ChristmasTreeUnitProps> = ({ data, hubConfig }
         <div className="relative w-full max-w-md flex justify-center items-center">
           <div className={`w-full transition-colors duration-700 ${healthColors[health]} drop-shadow-[0_0_20px_rgba(0,0,0,0.5)] tree-svg-container`} dangerouslySetInnerHTML={{ __html: data.svg }} />
           
+          {/* Live Telemetry Summary Overlay */}
+          <div className="absolute bottom-4 right-4 z-20 bg-slate-950/80 border border-slate-700/50 p-4 rounded-lg shadow-xl backdrop-blur-sm min-w-[220px]">
+            <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-3 border-b border-slate-800 pb-2">Live Telemetry Feed</h4>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              {data.telemetryParams.filter(p => 
+                p.label === 'Pressure' || 
+                p.label === 'Production Flow' || 
+                p.label === 'Temperature' ||
+                p.label === 'Master Valve' ||
+                p.label === 'Wing Valve' ||
+                p.label === 'Swab Valve'
+              ).map((param) => {
+                const partData = getPartData(param.label);
+                if (!partData) return null; 
+
+                const statusColorClass = partData.status === 'optimal' ? 'bg-emerald-500' :
+                                         partData.status === 'warning' ? 'bg-amber-500' :
+                                         'bg-rose-500';
+
+                return (
+                  <div key={param.label} className="flex items-center justify-between text-[10px]">
+                    <span className="text-slate-400 font-bold">{param.label.replace(' Valve', ' Vlv')}:</span>
+                    <div className="flex items-baseline gap-1">
+                      <span className={`h-1.5 w-1.5 rounded-full ${statusColorClass}`}></span>
+                      <span className="font-mono text-slate-200">{partData.value?.toFixed(1) || '---'}</span>
+                      <span className="text-slate-500 opacity-70">{param.unit.replace('% open', '%')}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Dynamic Component Detail Overlay (Switches based on active component) */}
           <div className="absolute bottom-4 left-4 z-20">
              <div 
-                className={`w-28 h-28 interactive-part cursor-pointer group/valve transition-all duration-300 ${featuredValve.isActive ? 'scale-110' : ''} ${featuredValve.isFailed ? 'comp-failed-glitch' : ''}`} 
+                className={`w-28 h-28 interactive-part cursor-pointer group/valve transition-all duration-300 ${featuredValve.isActive ? 'scale-110' : ''} ${isFeaturedValveFailed ? 'comp-failed-glitch' : ''}`} 
                 data-label={featuredValve.label}
              >
                 <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-xl overflow-visible">
@@ -383,7 +438,7 @@ const ChristmasTreeUnit: React.FC<ChristmasTreeUnitProps> = ({ data, hubConfig }
                   <path 
                     d="M25 35 L75 65 L75 35 L25 65 Z" 
                     fill="currentColor" 
-                    fillOpacity={featuredValve.percentage < 10 || featuredValve.isFailed ? 0.4 : 0.15} 
+                    fillOpacity={featuredValve.percentage < 10 || isFeaturedValveFailed ? 0.4 : 0.15} 
                     stroke="currentColor" 
                     strokeWidth="2.5" 
                     className={`transition-all duration-700 ${pstActiveComponent === featuredValve.label ? 'pst-running-path' : ''}`} 
@@ -396,18 +451,18 @@ const ChristmasTreeUnit: React.FC<ChristmasTreeUnitProps> = ({ data, hubConfig }
                   <circle cx="50" cy="50" r="5" fill="currentColor" />
                   <text x="50" y="82" textAnchor="middle" className="text-[6px] font-black uppercase fill-slate-500 tracking-[0.2em] pointer-events-none">{featuredValve.label}</text>
                   <text x="50" y="93" textAnchor="middle" className="text-[9px] font-mono font-black fill-emerald-400 tracking-tight pointer-events-none">
-                    {featuredValve.isFailed ? 'FAIL' : `${Math.round(featuredValve.percentage)}%`} <tspan style={{ fontSize: '6px', opacity: 0.6 }}>{featuredValve.isFailed ? 'ALERT' : 'OPEN'}</tspan>
+                    {isFeaturedValveFailed ? 'FAIL' : `${Math.round(featuredValve.percentage)}%`} <tspan style={{ fontSize: '6px', opacity: 0.6 }}>{isFeaturedValveFailed ? 'ALERT' : 'OPEN'}</tspan>
                   </text>
                   
                   {pstActiveComponent === featuredValve.label && (
                     <text x="50" y="25" textAnchor="middle" className="text-[6px] font-black uppercase fill-amber-500 animate-pulse tracking-[0.2em] pointer-events-none">Executing PST</text>
                   )}
                   
-                  {(featuredValve.percentage < 5 || featuredValve.isFailed) && pstActiveComponent !== featuredValve.label && (
+                  {(featuredValve.percentage < 5 || isFeaturedValveFailed) && pstActiveComponent !== featuredValve.label && (
                     <circle cx="50" cy="50" r="10" fill="none" stroke="#f43f5e" strokeWidth="1.5" className="animate-pulse" />
                   )}
 
-                  {featuredValve.isFailed && (
+                  {isFeaturedValveFailed && (
                     <g transform="translate(75, 20)">
                        <circle r="8" fill="#f43f5e" />
                        <text y="3" textAnchor="middle" className="text-[10px] fill-white font-black">!</text>
@@ -541,6 +596,26 @@ const ChristmasTreeUnit: React.FC<ChristmasTreeUnitProps> = ({ data, hubConfig }
                 <section className="space-y-3 bg-amber-500/5 p-4 border border-amber-500/20 rounded">
                   <h5 className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em]">Maintenance Foresight</h5>
                   <p className="text-xs text-slate-200 leading-loose font-medium">{failedComponents.has(activePart.label.toLowerCase()) ? "CRITICAL: Component malfunction simulated. Immediate repair cycle required." : (activePartIntel?.recs || "Continue monitoring via Brahan Hub telemetry stream.")}</p>
+                </section>
+
+                <section className="space-y-3">
+                  <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-l-2 border-slate-700 pl-3">Common Failure Modes & Probabilities</h5>
+                  {activePartIntel?.failureModes && activePartIntel.failureModes.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-3">
+                      {activePartIntel.failureModes.map((fm, idx) => (
+                        <div key={idx} className="flex justify-between items-center bg-slate-950/50 p-3 rounded-md border border-slate-800">
+                          <span className="text-xs text-slate-300 font-medium">{fm.name}</span>
+                          <span className={`text-[10px] font-black uppercase ${
+                            fm.level === 'high' ? 'text-rose-400' : 
+                            fm.level === 'medium' ? 'text-amber-400' : 
+                            'text-emerald-400'
+                          }`}>{fm.probability}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 italic">No specific predictive failure modes detected for this component.</p>
+                  )}
                 </section>
 
                 <section className="grid grid-cols-2 gap-4">
